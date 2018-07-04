@@ -9,6 +9,7 @@ import BranchFactory from '@factories/branch-factory.ts'
 import * as utils    from '@locals/utils'
 import path          from 'path'
 import CID           from 'cids'
+import merge         from 'three-way-merge'
 
 export default class Loom {
   public static paths = {
@@ -29,15 +30,15 @@ export default class Loom {
   public get currentBranchName (): string {
     return utils.yaml.read(this.paths.current)
   }
-  
+
   public set currentBranchName (_name: string) {
     utils.yaml.write(this.paths.current, _name)
   }
-  
+
   public get currentBranch (): Branch {
     return Branch.load(this, this.currentBranchName)
   }
-  
+
   public get head () {
     return this.currentBranch.head
   }
@@ -92,15 +93,15 @@ export default class Loom {
 
   public async snapshot (_message: string): Promise < Snapshot > {
     let index = await this.index!.update()
-    
+
     if (!this.index!.unsnapshot.length) {
       throw new Error ('Nothing to snapshot')
     }
-    
+
     let tree    = await this.tree()
     let treeCID = await tree.put(this.node!)
     let parents = this.head !== 'undefined' ? [await this.fromIPLD(await this.node!.get(this.head))] : undefined
-    
+
     let snapshot = new Snapshot({ author: this.pando.configuration.author, tree: tree, parents: parents, message: _message })
     let cid      = await this.node!.put(await snapshot.toIPLD())
 
@@ -111,7 +112,7 @@ export default class Loom {
 
   public async checkout (_branchName: string) {
     await this.index!.update()
-    
+
     if (!Branch.exists(this, _branchName)) {
       throw new Error('Branch ' + _branchName + ' does not exist')
     }
@@ -121,15 +122,15 @@ export default class Loom {
     if (this.index!.modified.length) {
       throw new Error('You have unstaged and unsnaphot modifications: ' + this.index!.modified)
     }
-        
+
     let newHead  = Branch.head(this, _branchName)
     let baseHead = this.head
 
     if (newHead !== 'undefined') {
       let baseTree, newTree
-      
+
       newTree = await this.node!.get(newHead, 'tree')
-      
+
       if (baseHead !== 'undefined') {
         baseTree = await this.node!.get(baseHead, 'tree')
       } else {
@@ -141,8 +142,84 @@ export default class Loom {
     } else {
       await this.index!.reinitialize(await (new Tree({ path: '.', children: [] })).toIPLD())
     }
-  
+
     this.currentBranchName = _branchName
+  }
+
+  public async merge (_destinationBranchName :string)
+  {
+    await this.index!.update()
+
+    if (!Branch.exists(this, _destinationBranchName)) {
+      throw new Error('Branch ' + _destinationBranchName + ' does not exist')
+    }
+    if (this.index!.unsnapshot.length) {
+      throw new Error('You have unsnapshot modifications: ' + this.index!.unsnapshot)
+    }
+    if (this.index!.modified.length) {
+      throw new Error('You have unstaged and unsnaphot modifications: ' + this.index!.modified)
+    }
+
+    let destinationHead = Branch.head(this, _destinationBranchName)
+    let originHead = this.head
+    /*
+    * Building snapshot CID array fot the origin branch
+    */
+    // Get the first snapshot corresponding to the origin Branch
+    let originSnapshot = await this.node!.get(originHead)
+    // Build a chronological array of all snapshot CIDs
+    let originSnapshotCIDs = await this.buildSnapshotCIDS (originSnapshot)
+
+    /*
+    * Building snapshot CID array fot the destination branch
+    */
+    // Get the first snapshot corresponding to the origin Branch
+    let destinationSnapshot = await this.node!.get(destinationHead)
+    // Build a chronological array of all snapshot CIDs
+    let destinationSnapshotCIDs = await this.buildSnapshotCIDS (destinationSnapshot)
+    // Get the snapshot corresponding to the
+
+    /*
+    * Comparing the origin and destination arrays to get the lowest common ancestor CID
+    */
+    let lcaCID
+    for(let entry of originSnapshotCIDs) {
+      if(destinationSnapshotCIDs.indexOf(entry) !== -1) {
+        lcaCID = entry
+        break
+      }
+    }
+
+    // Get the three trees. If lcaCID, originHead or destinationHead are 'undefined', then the tree is the default tree (Tree({ path: '.', children: [] })
+    let originTree, destinationTree, lcaTree
+
+      originTree = await this.node!.get(originHead, 'tree')
+      destinationTree = await this.node!.get(destinationHead, 'tree')
+      lcaTree = await this.node!.get(lcaCID,'tree')
+
+      let mergeResult
+      mergeResult = await this.mergeTrees(originTree,destinationTree,lcaTree)
+
+      // We analyse the merge report. If it's a conflict...
+      if(mergeResult[0] === 'conflict'){
+        //... we throw an exception and the conflict report.
+        throw new Error('Some of the destination branch files are conflicting with the current one : \n' + mergeResult[1])
+
+      }
+      else {
+        console.log('Merge successful', mergeResult[0])
+        // If there was no conflict, we download the merged Tree, and update the index.
+        await this.updateWorkingDirectory(originTree,mergeResult[2])
+        await this.index!.reinitialize(mergeResult[2])
+
+        // Create a new Snapshot of the situation.
+        await this.snapshot('Merged ' + this.currentBranchName + '  into ' + _destinationBranchName)
+
+        //And we change the working branch to the destination one.
+        this.currentBranchName = _destinationBranchName
+
+      }
+
   }
 
   public async fromIPLD (object) {
@@ -232,6 +309,100 @@ export default class Loom {
     return tree
   }
 
+  private async buildSnapshotCIDS (_snapshot : any) : Promise<Array<any>> {
+    let snapshot = _snapshot
+    let snapshotCIDs : Array<any> = []
+
+    while(snapshot.parents !== 'undefined'){
+      snapshotCIDs.push(snapshot.parents[0])
+      snapshot = await this.node!.get(snapshot.parents[0])
+    }
+
+    // We add the base root CID
+    snapshotCIDs.push('undefined')
+
+    return snapshotCIDs
+  }
+
+
+  /*
+  * mergeTrees returns a tuple with :
+  * 1 - a merge flag if there is conflict or not.
+  * 2- the conflict report (filename : conflict report for every conflicting file)
+  * 3- The merged tree if there's no conflict
+  */
+  private async mergeTrees (_originTree : any, _destinationTree : any , _lcaTree : any) : Promise<[any,any,any]> {
+    // Delete meta properties to loop over tree's entries only
+    delete _originTree['@type']
+    delete _originTree['path']
+    // Delete meta properties to loop over tree's entries only
+    delete _destinationTree['@type']
+    delete _destinationTree['path']
+
+    delete _lcaTree['@type']
+    delete _lcaTree['path']
+
+    let mergeResult, mergeTree , mergeFlag, mergeReport
+
+    for(let entry in _destinationTree) {
+      if(!_originTree[entry]) {
+        // the entry exists in the _destinationTree but not in the base tree : we add the entry to the merge Tree
+        mergeTree[entry] = _destinationTree[entry]
+        delete _originTree[entry] // @Sarrouy WHY ?
+      } else {
+        // entry existing both in newTree and in baseTree. We first check the hash equality (basic diff)
+        if (_destinationTree[entry]['/'] !== _originTree[entry]['/']) {
+
+          let originEntryType = await this.node!.get(_originTree[entry]['/'], '@type')
+          let destinationEntryType  = await this.node!.get(_destinationTree[entry]['/'], '@type')
+          if (originEntryType !== destinationEntryType) {
+            // entry type differs in baseTree and newTree we add the entry to the merge tree
+            mergeTree[entry] = _destinationTree[entry]
+          } else if (originEntryType === 'file') {
+            // It's time to merged § we go to the _lcaTree and try to find a common file.
+            if(!_lcaTree[entry]) {
+            //There's no common ancestor : Two way merge
+            throw new Error('We can\'t perform a three way merge for ' + entry +'. There\'s no common ancestor in the branch node. Please choose wich file you wan\'t to keep manually')
+          } else {
+            //There's a common ancestor : three way merge
+            let left  = await this.node!.download(_originTree[entry]['/'],{cacheOnly : true})
+            let base = await this.node!.download(_lcaTree[entry]['/'],{cacheOnly : true})
+            let right = await this.node!.download(_destinationTree[entry]['/'],{cacheOnly : true})
+
+            const merged = merge(left, base, right);
+
+            console.log(merged.conflict);
+            console.log(merged.joinedResults())
+
+          }
+
+
+          } else if (originEntryType === 'tree') {
+          // entry is a tree : we call a recursive method to continue building recursively the merge tree.
+          let originEntry = await this.node!.get(_originTree[entry]['/'])
+          let destinationEntry  = await this.node!.get(_destinationTree[entry]['/'])
+          let lcaEntry  = await this.node!.get(_lcaTree[entry]['/'])
+
+          await this.mergeTrees(originEntry, destinationEntry,lcaEntry)          //await this.updateWorkingDirectory(baseEntry, newEntry)
+        }
+
+      }
+    }
+
+      //Then the _originTree ones (we deleted in _originTree all the common files with _destinationTree to go faster)
+
+
+    }
+    // !!!!! BEWARE OF THE TWO WAY MERGE
+    //Find the lowest common tree
+      mergeResult[0] = mergeFlag
+      mergeResult[1] = mergeReport
+      mergeResult[2] = mergeTree
+
+
+      return mergeResult
+  }
+
   private async updateWorkingDirectory (_baseTree: any, _newTree: any) {
     // Delete meta properties to loop over tree's entries only
     delete _baseTree['@type']
@@ -239,7 +410,7 @@ export default class Loom {
     // Delete meta properties to loop over tree's entries only
     delete _newTree['@type']
     delete _newTree['path']
-    
+
     for (let entry in _newTree) {
       if (!_baseTree[entry]) {
         // entry existing in newTree but not in baseTree
@@ -262,13 +433,13 @@ export default class Loom {
             // entry is a tree
             let baseEntry = await this.node!.get(_baseTree[entry]['/'])
             let newEntry  = await this.node!.get(_newTree[entry]['/'])
-            await this.updateWorkingDirectory(baseEntry, newEntry) 
+            await this.updateWorkingDirectory(baseEntry, newEntry)
           }
         }
         delete _baseTree[entry]
       }
     }
-    
+
     for (let entry in _baseTree) {
       // Delete remaining files
       let _path = await this.node!.get(_baseTree[entry]['/'], 'path')

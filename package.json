@@ -56,10 +56,13 @@
     "js-yaml": "^3.11.0",
     "jsonfile": "^4.0.0",
     "klaw-sync": "^3.0.2",
+    "nodeify": "^1.0.1",
     "promisify-event": "^1.0.0",
     "reflect-metadata": "^0.1.12",
     "rimraf": "^2.6.2",
+    "three-way-merge": "^0.1.0",
     "truffle-contract": "^3.0.4",
-    "web3": "^1.0.0-beta.33"
+    "web3": "^1.0.0-beta.33",
+    "websocket": "^1.0.26"
   }
 }

@@ -54,7 +54,8 @@ export default class Node {
     return results[0].hash
   }
 
-  public async download (_cid: any, opts?: any) {
+// Writes a full tree on the disk
+  public async download (_cid: any, opts?: any) : Promise<any> {
     return new Promise < any > (async (resolve, reject) => {
       let cid = CID.isCID(_cid) ? _cid : new CID(_cid)
       this.ipld.get(cid, async (err, result) => {
@@ -63,20 +64,25 @@ export default class Node {
         } else {
           let node = result.value
           let nodePath = path.join(this.loom.paths.root, node.path)
-          
+
           if (node['@type'] === 'tree') {
             if (!utils.fs.exists(nodePath)) { utils.fs.mkdir(nodePath) }
-            
+
             delete node['@type']
             delete node['path']
-            
+
             for (let entry in node) {
               this.download(node[entry]['/'])
             }
           } else if (node['@type'] === 'file') {
             let buffer = await this.ipfs.files.cat(node.link['/'])
+
+            if(opts.cacheOnly) {
+              resolve(buffer)
+            }
+
             utils.fs.write(nodePath, buffer)
-            
+
           }
           resolve(true)
         }
