@@ -342,6 +342,7 @@ export default class Loom {
     delete _lcaTree['@type']
     delete _lcaTree['path']
 
+    let childrenMergeResults
     let mergeResult, mergeTree , mergeFlag, mergeReport
 
     for(let entry in _destinationTree) {
@@ -369,11 +370,11 @@ export default class Loom {
             let base = await this.node!.download(_lcaTree[entry]['/'],{cacheOnly : true})
             let right = await this.node!.download(_destinationTree[entry]['/'],{cacheOnly : true})
 
-            const merged = merge(left, base, right);
+            const merged = merge(left, base, right)
 
-            console.log(merged.conflict);
-            console.log(merged.joinedResults())
-
+            //
+            mergeFlag.push(merged.conflict)
+            mergeReport.push(merged.joinedResults())
           }
 
 
@@ -383,7 +384,7 @@ export default class Loom {
           let destinationEntry  = await this.node!.get(_destinationTree[entry]['/'])
           let lcaEntry  = await this.node!.get(_lcaTree[entry]['/'])
 
-          await this.mergeTrees(originEntry, destinationEntry,lcaEntry)          //await this.updateWorkingDirectory(baseEntry, newEntry)
+          childrenMergeResults.push(await this.mergeTrees(originEntry, destinationEntry,lcaEntry))
         }
 
       }
@@ -393,14 +394,36 @@ export default class Loom {
 
 
     }
-    // !!!!! BEWARE OF THE TWO WAY MERGE
-    //Find the lowest common tree
-      mergeResult[0] = mergeFlag
-      mergeResult[1] = mergeReport
-      mergeResult[2] = mergeTree
 
+    mergeResult = this.joinMergeResults(childrenMergeResults, mergeFlag, mergeReport, mergeTree)
 
-      return mergeResult
+    return mergeResult
+  }
+
+  private joinMergeResults (_childrenMergeResults : any , _mergeFlag : any , _mergeReport : any , _mergeTree : any) : [any,any,any] {
+        let mergeResult
+
+        for(let result in _childrenMergeResults) {
+          // We merge the conflict flags
+          if(result[0] === 'conflict') {
+              mergeResult[0] = 'conflict'
+          }
+          else {
+            if(_mergeFlag.indexOf('conflict') !== -1) {
+              mergeResult[0] = 'conflict'
+            }
+          }
+
+          mergeResult[1] = _childrenMergeResults[1].concat(_mergeReport)
+
+          mergeResult[2] = this.concatTrees(_mergeTree,result[2])
+      }
+        return mergeResult
+  }
+
+  private concatTrees (_firstTree,_secondTree) : any {
+    let c_tree
+    return c_tree
   }
 
   private async updateWorkingDirectory (_baseTree: any, _newTree: any) {
