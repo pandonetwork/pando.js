@@ -77,8 +77,10 @@ export default class Node {
           } else if (node['@type'] === 'file') {
             let buffer = await this.ipfs.files.cat(node.link['/'])
 
-            if(opts.cacheOnly) {
-              resolve(buffer)
+            if(opts !== undefined) {
+              if(opts.cacheOnly) {
+                resolve(buffer)
+              }
             }
 
             utils.fs.write(nodePath, buffer)

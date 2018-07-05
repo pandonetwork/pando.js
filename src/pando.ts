@@ -10,7 +10,6 @@ import IPLDNode            from '@objects/ipld-node'
 import Loom                from '@components/loom'
 import Index               from '@components/index'
 import Branch              from '@components/branch'
-import MergeSystem         from '@components/merge-system'
 
 export default class Pando {
   public static contracts = PandoContracts
@@ -31,4 +30,4 @@ export default class Pando {
   }
 }
 
-export { Snapshot, Tree, File, IPLDNode, Loom, Index, Branch, MergeSystem }
+export { Snapshot, Tree, File, IPLDNode, Loom, Index, Branch }

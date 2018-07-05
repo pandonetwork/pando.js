@@ -22,7 +22,7 @@ describe('Loom', () => {
   })
 
   after(async () => { await utils.fs.rmdir(path.join('test','mocks','.pando')) })
-
+/*
   describe('#new', async () => {
     before(async () => { loom = await pando.loom.new(path.join('test','mocks')) })
 
@@ -156,16 +156,16 @@ describe('Loom', () => {
       snapshot.tree.children['test-directory'].should.exist
       snapshot.tree.children['test-directory'].path.should.equal('test-directory')
       snapshot.tree.children['test-directory'].children['test-1.md'].should.exist
-      snapshot.tree.children['test-directory'].children['test-1.md'].path.should.equal('test-directory/test-1.md')
-      snapshot.tree.children['test-directory'].children['test-1.md'].link.should.equal(cids['test-directory/test-1.md'])
+      snapshot.tree.children['test-directory'].children['test-1.md'].path.should.equal(path.join('test-directory','test-1.md'))
+      snapshot.tree.children['test-directory'].children['test-1.md'].link.should.equal(cids[path.join('test-directory','test-1.md')])
       snapshot.tree.children['test-directory'].children['test-2.md'].should.exist
-      snapshot.tree.children['test-directory'].children['test-2.md'].path.should.equal('test-directory/test-2.md')
-      snapshot.tree.children['test-directory'].children['test-2.md'].link.should.equal(cids['test-directory/test-2.md'])
+      snapshot.tree.children['test-directory'].children['test-2.md'].path.should.equal(path.join('test-directory','test-2.md'))
+      snapshot.tree.children['test-directory'].children['test-2.md'].link.should.equal(cids[path.join('test-directory','test-2.md')])
       snapshot.tree.children['test-directory'].children['test-subdirectory'].should.exist
-      snapshot.tree.children['test-directory'].children['test-subdirectory'].path.should.equal('test-directory/test-subdirectory')
+      snapshot.tree.children['test-directory'].children['test-subdirectory'].path.should.equal(path.join('test-directory','test-subdirectory'))
       snapshot.tree.children['test-directory'].children['test-subdirectory'].children['test.md'].should.exist
-      snapshot.tree.children['test-directory'].children['test-subdirectory'].children['test.md'].path.should.equal('test-directory/test-subdirectory/test.md')
-      snapshot.tree.children['test-directory'].children['test-subdirectory'].children['test.md'].link.should.equal(cids['test-directory/test-subdirectory/test.md'])
+      snapshot.tree.children['test-directory'].children['test-subdirectory'].children['test.md'].path.should.equal(path.join('test-directory','test-subdirectory','test.md'))
+      snapshot.tree.children['test-directory'].children['test-subdirectory'].children['test.md'].link.should.equal(cids[path.join('test-directory','test-subdirectory','test.md')])
     })
 
     it('should push snapshot to ipfs/ipld correctly', async () => {
@@ -199,7 +199,7 @@ describe('Loom', () => {
     })
 
   })
-
+*/
   describe('#checkout', async () => {
     before(async () => {
       loom     = await pando.loom.new(path.join('test','mocks'))
@@ -348,8 +348,88 @@ describe('Loom', () => {
     })
   })
 
+  describe('#merge', async () => {
+    before(async () => {
+      loom     = await pando.loom.new(path.join('test','mocks'))
+    })
 
+    after(async () => {
+      await utils.fs.rmdir(path.join('test','mocks','.pando'))
+    })
 
+    // Reset the local files to the original state
+    afterEach(() => {
+      if (utils.fs.exists(path.join('test','mocks','test.md'))) {
+        utils.fs.rm(path.join('test','mocks','test.md'))
+      }
+      if (utils.fs.exists(path.join('test','mocks','test-directory','test-1.md'))) {
+        utils.fs.rm(path.join('test','mocks','test-directory','test-1.md'))
+      }
+      if (utils.fs.exists(path.join('test','mocks','test-directory','test-2.md'))) {
+        utils.fs.rm(path.join('test','mocks','test-directory','test-2.md'))
+      }
+      if (utils.fs.exists(path.join('test','mocks','test-directory','test-subdirectory','test.md'))) {
+        utils.fs.rm(path.join('test','mocks','test-directory','test-subdirectory','test.md'))
+      }
+
+      if (!utils.fs.exists(path.join('test','mocks','test-directory'))) {
+        utils.fs.mkdir(path.join('test','mocks','test-directory'))
+      }
+
+      if (!utils.fs.exists(path.join('test','mocks','test-directory','test-subdirectory'))) {
+        utils.fs.mkdir(path.join('test','mocks','test-directory','test-subdirectory'))
+      }
+
+      fs.copyFileSync(path.join('test','mocks-backup','test.md'), path.join('test','mocks','test.md'))
+      fs.copyFileSync(path.join('test','mocks-backup','test-directory','test-1.md'), path.join('test','mocks','test-directory','test-1.md'))
+      fs.copyFileSync(path.join('test','mocks-backup','test-directory','test-2.md'), path.join('test','mocks','test-directory','test-2.md'))
+      fs.copyFileSync(path.join('test','mocks-backup','test-directory','test-subdirectory','test.md'), path.join('test','mocks','test-directory','test-subdirectory','test.md'))
+    })
+
+    it('should accept the merge if two files have mergeable modifications', async () => {
+      await Branch.new(loom, 'dev')
+
+      await loom.checkout('master')
+      await loom.stage([path.join('test','mocks','test.md'), path.join('test','mocks','test-directory','test-1.md'), path.join('test','mocks','test-directory','test-2.md'),path.join('test','mocks','test-directory','test-subdirectory','test.md')])
+      await loom.snapshot('My first master snapshot')
+
+      await loom.checkout('dev')
+      await loom.stage([path.join('test','mocks','test.md')])
+      await loom.snapshot('My first dev snapshot')
+
+      await loom.merge('master')
+
+      utils.fs.exists(path.join('test','mocks','test-directory')).should.be.equal(true)
+    })
+
+    it('should reject the merge if two files have common modifications', async () => {
+
+    })
+
+    it('should reject the merge if two files have no common ancestor', async () => {
+
+    })
+
+    it('should throw if branch does not exist', async () => {
+      //loom.merge('doesnotexist').should.be.rejected
+    })
+
+    it('should throw in case of unstaged files', async () => {
+
+    })
+
+    it('should throw in case of unsnapshot modifications', async () => {
+
+    })
+
+    it('should update properly the working directory', async () => {
+
+    })
+
+    it('should create a new commit when the merge is done', async () => {
+
+    })
+  })
 
 
 

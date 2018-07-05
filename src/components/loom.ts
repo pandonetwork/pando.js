@@ -148,7 +148,10 @@ export default class Loom {
 
   public async merge (_destinationBranchName :string)
   {
+    console.log('updating the index')
     await this.index!.update()
+
+    console.log('passing preliminary tests the index (unstage/unsnaphot)')
 
     if (!Branch.exists(this, _destinationBranchName)) {
       throw new Error('Branch ' + _destinationBranchName + ' does not exist')
@@ -162,13 +165,18 @@ export default class Loom {
 
     let destinationHead = Branch.head(this, _destinationBranchName)
     let originHead = this.head
+    console.log('getting the heads', destinationHead, originHead)
+
     /*
     * Building snapshot CID array fot the origin branch
     */
     // Get the first snapshot corresponding to the origin Branch
     let originSnapshot = await this.node!.get(originHead)
+    console.log('getting the origin snapshot',originSnapshot)
+
     // Build a chronological array of all snapshot CIDs
     let originSnapshotCIDs = await this.buildSnapshotCIDS (originSnapshot)
+    console.log('displaying original snapshot cids',originSnapshotCIDs)
 
     /*
     * Building snapshot CID array fot the destination branch
@@ -313,8 +321,10 @@ export default class Loom {
     let snapshot = _snapshot
     let snapshotCIDs : Array<any> = []
 
-    while(snapshot.parents !== 'undefined'){
+    while(snapshot.parents !== undefined || snapshot.parents.length != 0){
+      console.log('getting the snapshot ', snapshot.parents[0])
       snapshotCIDs.push(snapshot.parents[0])
+
       snapshot = await this.node!.get(snapshot.parents[0])
     }
 
