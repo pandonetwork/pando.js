@@ -423,6 +423,14 @@ export default class Loom {
 
   private concatTrees (_firstTree,_secondTree) : any {
     let c_tree
+
+    c_tree = _secondTree
+
+    for(let entry in _firstTree) {
+      if(!_secondTree[entry]) {
+        c_tree[entry] = _firstTree[entry]
+      }
+    }
     return c_tree
   }
 
