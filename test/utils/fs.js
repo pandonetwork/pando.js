@@ -1,4 +1,5 @@
 import * as fs from 'fs-extra'
+import rimraf from 'rimraf'
 
 export const mkdir = (path) => {
   return fs.mkdirSync(path)
@@ -9,7 +10,8 @@ export const exists = (path) => {
 }
 
 export const rmdir = (path) => {
-  return fs.removeSync(path)
+  // return fs.removeSync(path)
+  return rimraf.sync(path)
 }
 
 export const write = (path, content) => {
@@ -17,9 +19,8 @@ export const write = (path, content) => {
 }
 
 export const read = (path) => {
-  return fs.readFileSync(path,'utf8')
+  return fs.readFileSync(path, 'utf8')
 }
-
 
 export const rm = (path) => {
   return fs.unlinkSync(path)

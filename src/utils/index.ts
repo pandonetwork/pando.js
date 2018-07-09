@@ -1,4 +1,4 @@
-import * as web3 from './web3'
-import * as aragon from './aragon'
+import * as fs from './fs'
+import * as yaml from './yaml'
 
-export { web3, aragon }
+export { fs, yaml }
